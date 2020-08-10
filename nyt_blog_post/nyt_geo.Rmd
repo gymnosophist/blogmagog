@@ -1,0 +1,150 @@
+---
+title: "NYT Geo Data"
+output: html_notebook
+theme: journal
+---
+
+<!-- Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*.  -->
+
+```{r}
+getwd()
+```
+
+## Graphing the NYT over time 
+
+I'm switching to R for this section of the project. I like Python's mapping capabilities just fine, but I prefer R's. 
+
+First, import the data created earlier and some libraries  
+
+```{r}
+library(lubridate)
+library(tidyverse)
+library(zoo)
+```
+
+
+```{r}
+full_archive <-  
+    read.csv('complete_nyt_archive.csv')
+
+full_archive.clean <- 
+    full_archive %>% 
+    mutate(pub_date = as.Date(pub_date), 
+           year = year(pub_date), 
+           month = month(pub_date), 
+           yearmon = format(as.Date(pub_date), "%Y_%m")) %>% 
+    select(c(yearmon, pub_date, web_url, lead_paragraph, news_desk, section_name, word_count)) %>% 
+    filter(word_count != 0)
+    
+```
+
+
+
+```{r}
+
+df <- read.csv('data/mapped_df.csv')
+
+data <- 
+    df %>% 
+    select(c(geo, lat, lng, news_desk, word_count, pub_date)) %>% 
+    mutate(pub_date = as.Date(pub_date), 
+           lat = as.numeric(lat), 
+           lng = as.numeric(lng))
+
+str(data)
+```
+
+Remember our original archive was some 575,000 rows; we have 87,112 with identifiable geographic data in their bylines. (Although agian, this is a bit aggressive, we're not including things like "ABOARD THE PAPAL AIRLINER" which... sure maybe has some geographic data in it.)
+
+```{r}
+nrow(data) / 339870
+
+```
+Looks like it's about 25%. How many of those come from each year? 
+```{r}
+summary
+```
+
+```{r}
+summary %>%  ggplot() + geom_bar(aes(x = yearmon, y = count), stat = 'identity') + 
+theme(panel.grid = element_blank(), 
+          axis.text.x = element_text(angle = 75, vjust= 1, hjust = 1))
+```
+
+
+```{r}
+
+summary <- 
+    full_archive.clean %>% 
+    group_by(yearmon) %>% 
+    summarise(count = n()) 
+print(summary)
+summary %>% 
+    ggplot(aes(x = yearmon, y = count, group = 1)) + 
+    geom_bar(fill = 'dodgerblue2', alpha = 2/5, stat = 'identity') + 
+    geom_abline(intercept = 6000, slope = -40, lty = 2, lwd = .9) + 
+    geom_vline(xintercept = '2017_01', lty = 2, color = 'firebrick4', alpha = .975, lwd = .8) + 
+    geom_segment( aes(x = '2018_01', y = 5750, 
+                      xend = '2017_02', yend = 5750), 
+                  arrow = arrow(length = (unit(0.5, 'cm')))) + 
+    annotate('text', x = '2018_07', y = 5750, label = 'Trump elected') +
+    theme_bw() + 
+    scale_x_discrete('Date', breaks = c('2015', '2016')) + 
+    ggtitle("Total Number of NYT Articles per Month, Jan, 2015 - July 2020") + 
+    xlab('Date') +
+    ylab("Number of Articles") + 
+    theme(panel.grid = element_blank(), 
+          axis.text.x = element_text(angle = 45, vjust= .5, hjust = 1))
+
+```
+
+
+```{r}
+drop <- data[which(is.na(data$word_count)), ] 
+```
+
+```{r}
+nrow(table(data$geo[1:10]))
+```
+
+Just in case we need it:
+
+```{r}
+yearly_words <- 
+    data %>% 
+    mutate(news_desk = as.factor(news_desk)) %>% 
+    group_by(year(pub_date)) %>% 
+    summarise(words = sum(word_count), .groups = 'keep') 
+```
+
+Now let's check out some summary statistics 
+
+```{r}
+summary <- 
+    data %>% 
+    group_by(year(pub_date)) %>% 
+    summarise(
+              words = sum(word_count), 
+              avg_length = mean(word_count),
+              article_count = n(), 
+              place_diversity = nrow(table(geo))) 
+summary
+```
+Note that we had to drop a few rows from 2018, and that will affect both the total word count and the `avg_length` of each article. 
+
+Let's do some plotting. 
+
+```{r}
+
+
+```
+
+
+
+---
+<!-- Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*. -->
+
+<!-- When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).  -->
+
+<!-- The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed. -->
+
