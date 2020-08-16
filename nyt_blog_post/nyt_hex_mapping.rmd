@@ -1,0 +1,392 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(geojsonio)
+library(broom)
+#install.packages('rgeos')
+library(rgeos)
+```
+## Intro and setup 
+```{r}
+# install.packages('rdgal') # working with geojson not shapefile
+# library(rgdal)
+
+hex_map <- geojson_read("data/us_states_hexgrid.geojson", what = "sp")
+
+library(tidyverse)
+library(sp)
+
+hex_map@data <- #clean name
+    hex_map@data %>% 
+    mutate(google_name = gsub(" \\(United States\\)", "", google_name))
+```
+
+```{r}
+plot(hex_map)
+```
+
+Ok, looks like we're good on step one. Now we try ggplot
+
+```{r}
+hex_map.fortified <- 
+    tidy(hex_map, region = "google_name") 
+centers <- cbind.data.frame(data.frame(gCentroid(hex_map, byid=TRUE), id=hex_map@data$iso3166_2))
+
+```
+
+```{r}
+ggplot() +
+  geom_polygon(data = hex_map.fortified, aes( x = long, y = lat, group = group), fill="skyblue", color="white") +
+  geom_text(data=centers, aes(x=x, y=y, label=id)) +
+  theme_void() +
+  coord_map()
+```
+
+Now we'll add our data. We need to merge articles in with states, for which we need geocoding. 
+
+```{r}
+state_counts <- read.csv("data/state_counts.csv")
+
+state_counts
+```
+
+Join on state to get our histogram -- let's use word count 
+
+```{r}
+# bin word count
+hex_map.fortified <-
+hex_map.fortified %>%
+left_join(., state_counts, by = c('id' = 'state'))
+
+
+hex_map.fortified$bin <-
+    cut(hex_map.fortified$word_count,
+        breaks = c(0, 50327, 247816, 874825, 564594, Inf),
+        labels = c("0-25%", "0-25%", "25-50%", "50-75%", "75%+"))
+
+hex_map.fortified
+
+
+    
+```
+
+```{r}
+yearly_counts <- read.csv("data/yearly_state_counts.csv")
+
+table(yearly_counts$state) %>%
+```
+
+
+```{r}
+library(viridis)
+hex_map.fortified %>% 
+    ggplot() +
+    geom_polygon(aes(fill = bin, x = long, y = lat, group = group), color = 'gray', alpha = .74) + 
+    theme_void() + 
+    coord_map() +
+    geom_text(data = centers, aes(x = x, y = y, label = id)) + 
+    scale_fill_viridis(option = 'viridis', 
+                       discrete = T) + 
+    ggtitle("How many Words has the New York Times Filed from Each State?") + 
+    labs(fill = 'Word Count Percentile') + 
+    theme(plot.background = element_rect(fill = "#f5f5f2", color = NA), 
+          panel.background = element_rect(fill = "#f5f5f2", color = NA), 
+          legend.background = element_rect(fill = "#f5f5f2", color = NA),
+          legend.position = 'bottom', 
+          plot.title = element_text(family = '', 
+                                    face = 'bold',
+                                    hjust = .5))
+    
+    
+
+```
+
+Looks good. What can we see over time? We need to add a year to the hex_map df 
+
+```{r}
+yc_2015 <- yearly_counts %>% filter(year  == 2015)
+```
+
+```{r}
+hex_map.fortified 
+```
+## Plotting changes over time 
+```{r}
+library(tidyverse)
+library(zoo)
+library(gtools)
+yearly_counts_2015 <- 
+  yearly_counts %>% rename(yearly_word_count  = word_count) %>% filter(year == 2015) 
+
+yearly_counts_2015 %>% mutate(bin = cut(yearly_word_count, 
+                                          breaks = c(quantile(yearly_counts_2015$yearly_word_count, probs = seq(0, 1, by = 0.25))),
+                                          labels = c("0-25%", "25-50%", "50-75%", "75%+"))) %>% 
+  right_join(hex_map.fortified %>% select(-c(word_count, bin)), by = c('state' = 'id')) %>% 
+  na.fill0(0) %>% 
+  ggplot() +
+    geom_polygon(aes(fill = bin, x = long, y = lat, group = group), color = 'gray', alpha = .74) + 
+    theme_void() + 
+    coord_map() +
+    geom_text(data = centers, aes(x = x, y = y, label = id)) + 
+    scale_fill_viridis(option = 'viridis', 
+                       discrete = T) + 
+    ggtitle("How Much Space did the New York Times Give Each State in 2015?") + 
+    labs(fill = 'Word Count Percentile') + 
+    theme(plot.background = element_rect(fill = "#f5f5f2", color = NA), 
+          panel.background = element_rect(fill = "#f5f5f2", color = NA), 
+          legend.background = element_rect(fill = "#f5f5f2", color = NA),
+          legend.position = "bottom", 
+          plot.title = element_text(family = '', 
+                                    face = 'bold',
+                                    hjust = .5))
+  
+  
+  
+```
+
+## making plots for each year 
+
+```{r}
+yearly_counts_2016 <- 
+  yearly_counts %>% rename(yearly_word_count  = word_count) %>% filter(year == 2016) 
+
+yearly_counts_2016 %>% mutate(bin = cut(yearly_word_count, 
+                                          breaks = c(quantile(yearly_counts_2016$yearly_word_count, probs = seq(0, 1, by = 0.25))),
+                                          labels = c("0-25%", "25-50%", "50-75%", "75%+"))) %>% 
+  right_join(hex_map.fortified %>% select(-c(word_count, bin)), by = c('state' = 'id')) %>% 
+  na.fill0(0) %>% 
+  ggplot() +
+    geom_polygon(aes(fill = bin, x = long, y = lat, group = group), color = 'gray', alpha = .74) + 
+    theme_void() + 
+    coord_map() +
+    geom_text(data = centers, aes(x = x, y = y, label = id)) + 
+    scale_fill_viridis(option = 'viridis', 
+                       discrete = T) + 
+    ggtitle("How Much Space did the New York Times Give Each State in 2016?") + 
+    labs(fill = 'Word Count Percentile') + 
+    theme(plot.background = element_rect(fill = "#f5f5f2", color = NA), 
+          panel.background = element_rect(fill = "#f5f5f2", color = NA), 
+          legend.background = element_rect(fill = "#f5f5f2", color = NA),
+          legend.position = c(.525, .941), 
+          legend.direction = 'horizontal',
+          plot.title = element_text(family = '', 
+                                    face = 'bold',
+                                    hjust = .5))
+    
+```
+
+
+
+```{r}
+yearly_counts_2017 <- 
+  yearly_counts %>% rename(yearly_word_count  = word_count) %>% filter(year == 2017) 
+
+yearly_counts_2017 %>% mutate(bin = cut(yearly_word_count, 
+                                          breaks = c(quantile(yearly_counts_2017$yearly_word_count, probs = seq(0, 1, by = 0.25))),
+                                          labels = c("0-25%", "25-50%", "50-75%", "75%+"))) %>% 
+  right_join(hex_map.fortified %>% select(-c(word_count, bin)), by = c('state' = 'id')) %>% 
+  na.fill0(0) %>% 
+  ggplot() +
+    geom_polygon(aes(fill = bin, x = long, y = lat, group = group), color = 'gray', alpha = .74) + 
+    theme_void() + 
+    coord_map() +
+    geom_text(data = centers, aes(x = x, y = y, label = id)) + 
+    scale_fill_viridis(option = 'viridis', 
+                       discrete = T) + 
+    ggtitle("How Much Space did the New York Times Give Each State in 2017?") + 
+    labs(fill = 'Word Count Percentile') + 
+    theme(plot.background = element_rect(fill = "#f5f5f2", color = NA), 
+          panel.background = element_rect(fill = "#f5f5f2", color = NA), 
+          legend.background = element_rect(fill = "#f5f5f2", color = NA),
+          legend.position = c(.525, .941), 
+          legend.direction = 'horizontal',
+          plot.title = element_text(family = '', 
+                                    face = 'bold',
+                                    hjust = .5))
+```
+
+
+```{r}
+yearly_counts_2018 <- 
+  yearly_counts %>% rename(yearly_word_count  = word_count) %>% filter(year == 2018) 
+
+yearly_counts_2018 %>% mutate(bin = cut(yearly_word_count, 
+                                          breaks = c(quantile(yearly_counts_2018$yearly_word_count, probs = seq(0, 1, by = 0.25))),
+                                          labels = c("0-25%", "25-50%", "50-75%", "75%+"))) %>% 
+  right_join(hex_map.fortified %>% select(-c(word_count, bin)), by = c('state' = 'id')) %>% 
+  na.fill0(0) %>% 
+  ggplot() +
+    geom_polygon(aes(fill = bin, x = long, y = lat, group = group), color = 'gray', alpha = .74) + 
+    theme_void() + 
+    coord_map() +
+    geom_text(data = centers, aes(x = x, y = y, label = id)) + 
+    scale_fill_viridis(option = 'viridis', 
+                       discrete = T) + 
+    ggtitle("How Much Space did the New York Times Give Each State in 2018?") + 
+    labs(fill = 'Word Count Percentile') + 
+    theme(plot.background = element_rect(fill = "#f5f5f2", color = NA), 
+          panel.background = element_rect(fill = "#f5f5f2", color = NA), 
+          legend.background = element_rect(fill = "#f5f5f2", color = NA),
+          legend.position = c(.525, .941), 
+          legend.direction = 'horizontal',
+          plot.title = element_text(family = '', 
+                                    face = 'bold',
+                                    hjust = .5))
+```
+
+```{r}
+yearly_counts_2019 <- 
+  yearly_counts %>% rename(yearly_word_count  = word_count) %>% filter(year == 2019) 
+
+yearly_counts_2019 %>% mutate(bin = cut(yearly_word_count, 
+                                          breaks = c(quantile(yearly_counts_2019$yearly_word_count, probs = seq(0, 1, by = 0.25))),
+                                          labels = c("0-25%", "25-50%", "50-75%", "75%+"))) %>% 
+  right_join(hex_map.fortified %>% select(-c(word_count, bin)), by = c('state' = 'id')) %>% 
+  na.fill0(0) %>% 
+  ggplot() +
+    geom_polygon(aes(fill = bin, x = long, y = lat, group = group), color = 'gray', alpha = .74) + 
+    theme_void() + 
+    coord_map() +
+    geom_text(data = centers, aes(x = x, y = y, label = id)) + 
+    scale_fill_viridis(option = 'viridis', 
+                       discrete = T) + 
+    ggtitle("How Much Space did the New York Times Give Each State in 2019?") + 
+    labs(fill = 'Word Count Percentile') + 
+    theme(plot.background = element_rect(fill = "#f5f5f2", color = NA), 
+          panel.background = element_rect(fill = "#f5f5f2", color = NA), 
+          legend.background = element_rect(fill = "#f5f5f2", color = NA),
+          legend.position = 'bottom', 
+          plot.title = element_text(family = '', 
+                                    face = 'bold',
+                                    hjust = .5))
+```
+
+```{r}
+yearly_counts_2020 <- 
+  yearly_counts %>% rename(yearly_word_count  = word_count) %>% filter(year == 2020) 
+
+yearly_counts_2020 %>% mutate(bin = cut(yearly_word_count, 
+                                          breaks = c(quantile(yearly_counts_2020$yearly_word_count, probs = seq(0, 1, by = 0.25))),
+                                          labels = c("0-25%", "25-50%", "50-75%", "75%+"))) %>% 
+  right_join(hex_map.fortified %>% select(-c(word_count, bin)), by = c('state' = 'id')) %>% 
+  na.fill0(0) %>% 
+  ggplot() +
+    geom_polygon(aes(fill = bin, x = long, y = lat, group = group), color = 'gray', alpha = .74) + 
+    theme_void() + 
+    coord_map() +
+    geom_text(data = centers, aes(x = x, y = y, label = id)) + 
+    scale_fill_viridis(option = 'viridis', 
+                       discrete = T) + 
+    ggtitle("How Much Space did the New York Times Give Each State in 2020?") + 
+    labs(fill = 'Word Count Percentile') + 
+    theme(plot.background = element_rect(fill = "#f5f5f2", color = NA), 
+          panel.background = element_rect(fill = "#f5f5f2", color = NA), 
+          legend.background = element_rect(fill = "#f5f5f2", color = NA),
+          legend.position = 'bottom', 
+          plot.title = element_text(family = '', 
+                                    face = 'bold',
+                                    hjust = .5))
+```
+
+Ok so let's where the biggest shifts occurred 
+
+
+
+
+
+## Two more state-by-state-maps: 
+- Words per capita 
+- Subtract election coverage and see what we have 
+
+### get data 
+```{r}
+state_pop <- 
+  read.csv('data/state_pop.csv') %>% 
+  rename(pop_2010 = X2010) %>% drop_na() %>% mutate(estimate_2019 = as.numeric(estimate_2019))
+
+state_pop 
+
+```
+
+```{r}
+hex_map.fortified %>% left_join(state_pop, by = c('id' = 'State')) %>% 
+  mutate(words_per_million_pop = word_count/((estimate_2019) / 1e6))
+```
+
+### plot 
+```{r}
+hex_map.fortified %>% left_join(state_pop, by = c('id' = 'State')) %>% 
+  mutate(words_per_million_pop = (word_count/ 1e6) / ((estimate_2019) / 1e6)) %>%
+  filter(id != "District of Columbia") %>% 
+    ggplot() +
+    geom_polygon(aes(fill = words_per_million_pop, x = long, y = lat, group = group), color = 'gray', alpha = .74) + 
+  geom_polygon(data = hex_map.fortified %>% filter(id == 'District of Columbia'), aes(x = long, y = lat), fill = 'gray', alpha = .75) + 
+    theme_void() + 
+    coord_map() +
+    geom_text(data = centers, aes(x = x, y = y, label = id)) + 
+    scale_fill_viridis(option = 'viridis', 
+                       discrete = F) + 
+    ggtitle("How Many Words per Person has the New York Times Filed since 2015?") + 
+    labs(fill = 'Words per Person') + 
+    theme(plot.background = element_rect(fill = "#f5f5f2", color = NA), 
+          panel.background = element_rect(fill = "#f5f5f2", color = NA), 
+          legend.background = element_rect(fill = "#f5f5f2", color = NA),
+          legend.text = element_text(face = 'bold'),
+          legend.title = element_text(face = 'bold', 
+                                      vjust = .8),
+          legend.position = c(.5, .91), 
+          legend.direction = 'horizontal',
+          plot.title = element_text(family = '', 
+                                    face = 'bold',
+                                    hjust = .5))
+```
+
+### without politics coverage 
+
+```{r}
+
+state_counts_no_politics <-  
+  read.csv('data/state_counts_no_politics.csv')
+state_counts_no_politics
+
+
+```
+
+
+```{r}
+hex_map.fortified %>% 
+  select(-c(word_count, bin)) %>% 
+  left_join(state_counts_no_politics, by = c("id" = "state")) %>% 
+  left_join(state_pop, by = c('id' = 'State')) %>% 
+  mutate(words_per_million_pop = (word_count/ 1e6) / ((estimate_2019) / 1e6)) %>%
+  filter(id != "District of Columbia") %>%
+    ggplot() +
+    geom_polygon(aes(fill = words_per_million_pop, x = long, y = lat, group = group), color = 'gray', alpha = .74) +
+  geom_polygon(data = hex_map.fortified %>% filter(id == 'District of Columbia'), aes(x = long, y = lat), fill = 'gray', alpha = .75) +
+    theme_void() +
+    coord_map() +
+    geom_text(data = centers, aes(x = x, y = y, label = id)) +
+    scale_fill_viridis(option = 'viridis',
+                       discrete = F) +
+    ggtitle("How Many Words per Person has the New York Times Filed since 2015?") +
+    labs(fill = 'Words per Person') +
+    theme(plot.background = element_rect(fill = "#f5f5f2", color = NA),
+          panel.background = element_rect(fill = "#f5f5f2", color = NA),
+          legend.background = element_rect(fill = "#f5f5f2", color = NA),
+          legend.text = element_text(face = 'bold'),
+          legend.title = element_text(face = 'bold',
+                                      vjust = .8),
+          legend.position = c(.5, .91),
+          legend.direction = 'horizontal',
+          plot.title = element_text(family = '',
+                                    face = 'bold',
+                                    hjust = .5))
+```
+
+
+
+
+
